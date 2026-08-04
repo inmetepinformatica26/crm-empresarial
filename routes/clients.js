@@ -26,7 +26,7 @@ router.get('/', verifyToken, async (req, res) => {
     }
     sql += ' ORDER BY c.created_at DESC';
 
-    const clients = queryAll(sql, params);
+    const clients = await queryAll(sql, params);
     res.json(clients);
   } catch (err) {
     console.error('Get clients error:', err);
@@ -38,10 +38,10 @@ router.get('/', verifyToken, async (req, res) => {
 router.get('/:id', verifyToken, async (req, res) => {
   try {
     const { queryOne, queryAll } = getDB();
-    const client = queryOne('SELECT c.*, u.full_name as created_by_name FROM clients c LEFT JOIN users u ON c.created_by = u.id WHERE c.id = ?', [req.params.id]);
+    const client = await queryOne('SELECT c.*, u.full_name as created_by_name FROM clients c LEFT JOIN users u ON c.created_by = u.id WHERE c.id = ?', [req.params.id]);
     if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
 
-    client.projects = queryAll('SELECT id, name, status, priority, start_date, end_date FROM projects WHERE client_id = ? ORDER BY created_at DESC', [req.params.id]);
+    client.projects = await queryAll('SELECT id, name, status, priority, start_date, end_date FROM projects WHERE client_id = ? ORDER BY created_at DESC', [req.params.id]);
     res.json(client);
   } catch (err) {
     console.error('Get client error:', err);
@@ -58,15 +58,15 @@ router.post('/', verifyToken, async (req, res) => {
     }
 
     const { run, queryOne } = getDB();
-    const result = run(
+    const result = await run(
       'INSERT INTO clients (company_name, contact_name, email, phone, address, city, country, tax_id, notes, status, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
       [company_name, contact_name, email || null, phone || null, address || null, city || null, country || 'Peru', tax_id || null, notes || null, status || 'active', req.user.id]
     );
 
-    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+    await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'create', 'client', result.lastInsertRowid, 'Cliente creado: ' + company_name]);
 
-    const client = queryOne('SELECT * FROM clients WHERE id = ?', [result.lastInsertRowid]);
+    const client = await queryOne('SELECT * FROM clients WHERE id = ?', [result.lastInsertRowid]);
     res.status(201).json(client);
   } catch (err) {
     console.error('Create client error:', err);
@@ -78,12 +78,12 @@ router.post('/', verifyToken, async (req, res) => {
 router.put('/:id', verifyToken, async (req, res) => {
   try {
     const { run, queryOne } = getDB();
-    const existing = queryOne('SELECT * FROM clients WHERE id = ?', [req.params.id]);
+    const existing = await queryOne('SELECT * FROM clients WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Cliente no encontrado' });
 
     const { company_name, contact_name, email, phone, address, city, country, tax_id, notes, status } = req.body;
 
-    run('UPDATE clients SET company_name=?, contact_name=?, email=?, phone=?, address=?, city=?, country=?, tax_id=?, notes=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+    await run('UPDATE clients SET company_name=?, contact_name=?, email=?, phone=?, address=?, city=?, country=?, tax_id=?, notes=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
       [
         company_name || existing.company_name,
         contact_name || existing.contact_name,
@@ -98,10 +98,10 @@ router.put('/:id', verifyToken, async (req, res) => {
         req.params.id
       ]);
 
-    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+    await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'update', 'client', req.params.id, 'Cliente actualizado: ' + (company_name || existing.company_name)]);
 
-    const client = queryOne('SELECT * FROM clients WHERE id = ?', [req.params.id]);
+    const client = await queryOne('SELECT * FROM clients WHERE id = ?', [req.params.id]);
     res.json(client);
   } catch (err) {
     console.error('Update client error:', err);
@@ -113,11 +113,11 @@ router.put('/:id', verifyToken, async (req, res) => {
 router.delete('/:id', verifyToken, async (req, res) => {
   try {
     const { run, queryOne } = getDB();
-    const existing = queryOne('SELECT * FROM clients WHERE id = ?', [req.params.id]);
+    const existing = await queryOne('SELECT * FROM clients WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Cliente no encontrado' });
 
-    run('DELETE FROM clients WHERE id = ?', [req.params.id]);
-    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+    await run('DELETE FROM clients WHERE id = ?', [req.params.id]);
+    await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'delete', 'client', req.params.id, 'Cliente eliminado: ' + existing.company_name]);
 
     res.json({ message: 'Cliente eliminado exitosamente' });

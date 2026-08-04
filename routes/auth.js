@@ -17,7 +17,7 @@ router.post('/login', async (req, res) => {
     }
 
     const { queryOne, run } = getDB();
-    const user = queryOne('SELECT * FROM users WHERE email = ? AND active = 1', [email]);
+    const user = await queryOne('SELECT * FROM users WHERE email = ? AND active = 1', [email]);
 
     if (!user) {
       return res.status(401).json({ error: 'Credenciales invalidas' });
@@ -30,7 +30,7 @@ router.post('/login', async (req, res) => {
 
     const token = generateToken(user);
 
-    run(
+    await run(
       'INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [user.id, 'login', 'user', user.id, 'Inicio de sesion']
     );
@@ -64,13 +64,13 @@ router.post('/register', verifyToken, async (req, res) => {
     }
 
     const { queryOne, run } = getDB();
-    const existing = queryOne('SELECT id FROM users WHERE email = ? OR username = ?', [email, username]);
+    const existing = await queryOne('SELECT id FROM users WHERE email = ? OR username = ?', [email, username]);
     if (existing) {
       return res.status(400).json({ error: 'El usuario o email ya existe' });
     }
 
     const hashedPassword = bcrypt.hashSync(password, 10);
-    const result = run(
+    const result = await run(
       'INSERT INTO users (username, email, password, full_name, role) VALUES (?,?,?,?,?)',
       [username, email, hashedPassword, full_name, role || 'user']
     );
@@ -89,7 +89,7 @@ router.post('/register', verifyToken, async (req, res) => {
 router.get('/profile', verifyToken, async (req, res) => {
   try {
     const { queryOne } = getDB();
-    const user = queryOne(
+    const user = await queryOne(
       'SELECT id, username, email, full_name, role, created_at FROM users WHERE id = ?',
       [req.user.id]
     );
@@ -108,7 +108,7 @@ router.get('/users', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'Acceso denegado' });
     }
     const { queryAll } = getDB();
-    const users = queryAll('SELECT id, username, email, full_name, role, active, created_at FROM users ORDER BY full_name');
+    const users = await queryAll('SELECT id, username, email, full_name, role, active, created_at FROM users ORDER BY full_name');
     res.json(users);
   } catch (err) {
     console.error('Users error:', err);
@@ -120,7 +120,7 @@ router.get('/users', verifyToken, async (req, res) => {
 router.get('/assignable', verifyToken, async (req, res) => {
   try {
     const { queryAll } = getDB();
-    const users = queryAll('SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name');
+    const users = await queryAll('SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name');
     res.json(users);
   } catch (err) {
     console.error('Assignable users error:', err);
@@ -135,15 +135,15 @@ router.put('/users/:id/toggle-status', verifyToken, async (req, res) => {
       return res.status(403).json({ error: 'Acceso denegado' });
     }
     const { run, queryOne } = getDB();
-    const user = queryOne('SELECT id, active FROM users WHERE id = ?', [req.params.id]);
+    const user = await queryOne('SELECT id, active FROM users WHERE id = ?', [req.params.id]);
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    
+
     const newStatus = user.active ? 0 : 1;
-    run('UPDATE users SET active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newStatus, req.params.id]);
-    
-    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+    await run('UPDATE users SET active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newStatus, req.params.id]);
+
+    await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'update', 'user', req.params.id, 'Usuario ' + (newStatus ? 'activado' : 'desactivado')]);
-    
+
     res.json({ message: 'Usuario ' + (newStatus ? 'activado' : 'desactivado') + ' exitosamente', active: newStatus });
   } catch (err) {
     console.error('Toggle user status error:', err);
@@ -159,14 +159,14 @@ router.put('/users/:id', verifyToken, async (req, res) => {
     }
 
     const { run, queryOne } = getDB();
-    const user = queryOne('SELECT * FROM users WHERE id = ?', [req.params.id]);
+    const user = await queryOne('SELECT * FROM users WHERE id = ?', [req.params.id]);
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
     const { username, email, password, full_name, role } = req.body;
 
     // Check if username or email already taken by another user
     if (username || email) {
-      const existing = queryOne('SELECT id FROM users WHERE (email = ? OR username = ?) AND id != ?', 
+      const existing = await queryOne('SELECT id FROM users WHERE (email = ? OR username = ?) AND id != ?',
         [email || user.email, username || user.username, req.params.id]);
       if (existing) {
         return res.status(400).json({ error: 'El usuario o email ya existe' });
@@ -185,12 +185,12 @@ router.put('/users/:id', verifyToken, async (req, res) => {
     updateSql += ' WHERE id=?';
     params.push(req.params.id);
 
-    run(updateSql, params);
+    await run(updateSql, params);
 
-    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+    await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'update', 'user', req.params.id, 'Usuario actualizado: ' + (full_name || user.full_name)]);
 
-    const updated = queryOne('SELECT id, username, email, full_name, role, active, created_at FROM users WHERE id = ?', [req.params.id]);
+    const updated = await queryOne('SELECT id, username, email, full_name, role, active, created_at FROM users WHERE id = ?', [req.params.id]);
     res.json(updated);
   } catch (err) {
     console.error('Update user error:', err);
@@ -206,15 +206,15 @@ router.delete('/users/:id', verifyToken, async (req, res) => {
     }
 
     const { run, queryOne } = getDB();
-    const user = queryOne('SELECT * FROM users WHERE id = ?', [req.params.id]);
+    const user = await queryOne('SELECT * FROM users WHERE id = ?', [req.params.id]);
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    
+
     if (user.id === req.user.id) {
       return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
     }
 
-    run('DELETE FROM users WHERE id = ?', [req.params.id]);
-    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+    await run('DELETE FROM users WHERE id = ?', [req.params.id]);
+    await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'delete', 'user', req.params.id, 'Usuario eliminado: ' + user.full_name]);
 
     res.json({ message: 'Usuario eliminado exitosamente' });

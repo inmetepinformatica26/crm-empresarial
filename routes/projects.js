@@ -30,7 +30,7 @@ router.get('/', verifyToken, async (req, res) => {
     }
     sql += ' ORDER BY p.created_at DESC';
 
-    const projects = queryAll(sql, params);
+    const projects = await queryAll(sql, params);
     res.json(projects);
   } catch (err) {
     console.error('Get projects error:', err);
@@ -42,7 +42,7 @@ router.get('/', verifyToken, async (req, res) => {
 router.get('/tasks/all', verifyToken, async (req, res) => {
   try {
     const { queryAll } = getDB();
-    const tasks = queryAll(`
+    const tasks = await queryAll(`
       SELECT t.*, p.name as project_name, u.full_name as assigned_name 
       FROM tasks t 
       INNER JOIN projects p ON t.project_id = p.id 
@@ -61,17 +61,17 @@ router.get('/dashboard/stats', verifyToken, async (req, res) => {
   try {
     const { queryAll, queryOne } = getDB();
 
-    const totalClients = queryOne('SELECT COUNT(*) as count FROM clients').count;
-    const activeClients = queryOne("SELECT COUNT(*) as count FROM clients WHERE status='active'").count;
-    const totalProjects = queryOne('SELECT COUNT(*) as count FROM projects').count;
-    const activeProjects = queryOne("SELECT COUNT(*) as count FROM projects WHERE status NOT IN ('completed','cancelled')").count;
-    const totalTasks = queryOne('SELECT COUNT(*) as count FROM tasks').count;
-    const pendingTasks = queryOne("SELECT COUNT(*) as count FROM tasks WHERE status IN ('pending','in_progress')").count;
-    const totalUsers = queryOne('SELECT COUNT(*) as count FROM users WHERE active=1').count;
+    const totalClients = (await queryOne('SELECT COUNT(*) as count FROM clients')).count;
+    const activeClients = (await queryOne("SELECT COUNT(*) as count FROM clients WHERE status='active'")).count;
+    const totalProjects = (await queryOne('SELECT COUNT(*) as count FROM projects')).count;
+    const activeProjects = (await queryOne("SELECT COUNT(*) as count FROM projects WHERE status NOT IN ('completed','cancelled')")).count;
+    const totalTasks = (await queryOne('SELECT COUNT(*) as count FROM tasks')).count;
+    const pendingTasks = (await queryOne("SELECT COUNT(*) as count FROM tasks WHERE status IN ('pending','in_progress')")).count;
+    const totalUsers = (await queryOne('SELECT COUNT(*) as count FROM users WHERE active=1')).count;
 
-    const recentActivity = queryAll('SELECT a.*, u.full_name as user_name FROM activity_log a LEFT JOIN users u ON a.user_id = u.id ORDER BY a.created_at DESC LIMIT 10');
-    const projectsByStatus = queryAll('SELECT status, COUNT(*) as count FROM projects GROUP BY status');
-    const clientsByStatus = queryAll('SELECT status, COUNT(*) as count FROM clients GROUP BY status');
+    const recentActivity = await queryAll('SELECT a.*, u.full_name as user_name FROM activity_log a LEFT JOIN users u ON a.user_id = u.id ORDER BY a.created_at DESC LIMIT 10');
+    const projectsByStatus = await queryAll('SELECT status, COUNT(*) as count FROM projects GROUP BY status');
+    const clientsByStatus = await queryAll('SELECT status, COUNT(*) as count FROM clients GROUP BY status');
 
     res.json({
       totalClients, activeClients, totalProjects, activeProjects,
@@ -88,11 +88,11 @@ router.get('/dashboard/stats', verifyToken, async (req, res) => {
 router.get('/:id', verifyToken, async (req, res) => {
   try {
     const { queryOne, queryAll } = getDB();
-    const project = queryOne('SELECT p.*, c.company_name as client_name, c.contact_name as client_contact, u.full_name as assigned_name, cr.full_name as creator_name FROM projects p LEFT JOIN clients c ON p.client_id = c.id LEFT JOIN users u ON p.assigned_to = u.id LEFT JOIN users cr ON p.created_by = cr.id WHERE p.id = ?', [req.params.id]);
+    const project = await queryOne('SELECT p.*, c.company_name as client_name, c.contact_name as client_contact, u.full_name as assigned_name, cr.full_name as creator_name FROM projects p LEFT JOIN clients c ON p.client_id = c.id LEFT JOIN users u ON p.assigned_to = u.id LEFT JOIN users cr ON p.created_by = cr.id WHERE p.id = ?', [req.params.id]);
 
     if (!project) return res.status(404).json({ error: 'Proyecto no encontrado' });
 
-    project.tasks = queryAll('SELECT t.*, u.full_name as assigned_name FROM tasks t LEFT JOIN users u ON t.assigned_to = u.id WHERE t.project_id = ? ORDER BY t.created_at DESC', [req.params.id]);
+    project.tasks = await queryAll('SELECT t.*, u.full_name as assigned_name FROM tasks t LEFT JOIN users u ON t.assigned_to = u.id WHERE t.project_id = ? ORDER BY t.created_at DESC', [req.params.id]);
     res.json(project);
   } catch (err) {
     console.error('Get project error:', err);
@@ -107,15 +107,15 @@ router.post('/', verifyToken, async (req, res) => {
     if (!name) return res.status(400).json({ error: 'El nombre del proyecto es requerido' });
 
     const { run, queryOne } = getDB();
-    const result = run(
+    const result = await run(
       'INSERT INTO projects (name, description, client_id, status, priority, start_date, end_date, budget, created_by, assigned_to) VALUES (?,?,?,?,?,?,?,?,?,?)',
       [name, description || null, client_id || null, status || 'planning', priority || 'medium', start_date || null, end_date || null, budget || 0, req.user.id, assigned_to || null]
     );
 
-    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+    await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'create', 'project', result.lastInsertRowid, 'Proyecto creado: ' + name]);
 
-    const project = queryOne('SELECT * FROM projects WHERE id = ?', [result.lastInsertRowid]);
+    const project = await queryOne('SELECT * FROM projects WHERE id = ?', [result.lastInsertRowid]);
     res.status(201).json(project);
   } catch (err) {
     console.error('Create project error:', err);
@@ -127,12 +127,12 @@ router.post('/', verifyToken, async (req, res) => {
 router.put('/:id', verifyToken, async (req, res) => {
   try {
     const { run, queryOne } = getDB();
-    const existing = queryOne('SELECT * FROM projects WHERE id = ?', [req.params.id]);
+    const existing = await queryOne('SELECT * FROM projects WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
 
     const { name, description, client_id, status, priority, start_date, end_date, budget, assigned_to } = req.body;
 
-    run('UPDATE projects SET name=?, description=?, client_id=?, status=?, priority=?, start_date=?, end_date=?, budget=?, assigned_to=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+    await run('UPDATE projects SET name=?, description=?, client_id=?, status=?, priority=?, start_date=?, end_date=?, budget=?, assigned_to=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
       [
         name || existing.name,
         description !== undefined ? description : existing.description,
@@ -145,10 +145,10 @@ router.put('/:id', verifyToken, async (req, res) => {
         req.params.id
       ]);
 
-    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+    await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'update', 'project', req.params.id, 'Proyecto actualizado: ' + (name || existing.name)]);
 
-    const project = queryOne('SELECT * FROM projects WHERE id = ?', [req.params.id]);
+    const project = await queryOne('SELECT * FROM projects WHERE id = ?', [req.params.id]);
     res.json(project);
   } catch (err) {
     console.error('Update project error:', err);
@@ -160,13 +160,13 @@ router.put('/:id', verifyToken, async (req, res) => {
 router.delete('/:id', verifyToken, async (req, res) => {
   try {
     const { run, queryOne } = getDB();
-    const existing = queryOne('SELECT * FROM projects WHERE id = ?', [req.params.id]);
+    const existing = await queryOne('SELECT * FROM projects WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
 
     // Delete associated tasks first
-    run('DELETE FROM tasks WHERE project_id = ?', [req.params.id]);
-    run('DELETE FROM projects WHERE id = ?', [req.params.id]);
-    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+    await run('DELETE FROM tasks WHERE project_id = ?', [req.params.id]);
+    await run('DELETE FROM projects WHERE id = ?', [req.params.id]);
+    await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'delete', 'project', req.params.id, 'Proyecto eliminado: ' + existing.name]);
 
     res.json({ message: 'Proyecto eliminado exitosamente' });
@@ -183,15 +183,15 @@ router.post('/:id/tasks', verifyToken, async (req, res) => {
     if (!title) return res.status(400).json({ error: 'El titulo de la tarea es requerido' });
 
     const { run, queryOne } = getDB();
-    const result = run(
+    const result = await run(
       'INSERT INTO tasks (title, description, project_id, assigned_to, priority, due_date, created_by) VALUES (?,?,?,?,?,?,?)',
       [title, description || null, req.params.id, assigned_to || null, priority || 'medium', due_date || null, req.user.id]
     );
 
-    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+    await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'create', 'task', result.lastInsertRowid, 'Tarea creada: ' + title]);
 
-    const task = queryOne('SELECT * FROM tasks WHERE id = ?', [result.lastInsertRowid]);
+    const task = await queryOne('SELECT * FROM tasks WHERE id = ?', [result.lastInsertRowid]);
     res.status(201).json(task);
   } catch (err) {
     console.error('Create task error:', err);
@@ -203,12 +203,12 @@ router.post('/:id/tasks', verifyToken, async (req, res) => {
 router.put('/tasks/:id', verifyToken, async (req, res) => {
   try {
     const { run, queryOne } = getDB();
-    const existing = queryOne('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
+    const existing = await queryOne('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Tarea no encontrada' });
 
     const { title, description, status, priority, assigned_to, due_date } = req.body;
 
-    run('UPDATE tasks SET title=?, description=?, status=?, priority=?, assigned_to=?, due_date=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
+    await run('UPDATE tasks SET title=?, description=?, status=?, priority=?, assigned_to=?, due_date=?, updated_at=CURRENT_TIMESTAMP WHERE id=?',
       [
         title || existing.title,
         description !== undefined ? description : existing.description,
@@ -218,7 +218,7 @@ router.put('/tasks/:id', verifyToken, async (req, res) => {
         req.params.id
       ]);
 
-    const task = queryOne('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
+    const task = await queryOne('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
     res.json(task);
   } catch (err) {
     console.error('Update task error:', err);
@@ -230,10 +230,10 @@ router.put('/tasks/:id', verifyToken, async (req, res) => {
 router.delete('/tasks/:id', verifyToken, async (req, res) => {
   try {
     const { run, queryOne } = getDB();
-    const existing = queryOne('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
+    const existing = await queryOne('SELECT * FROM tasks WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Tarea no encontrada' });
 
-    run('DELETE FROM tasks WHERE id = ?', [req.params.id]);
+    await run('DELETE FROM tasks WHERE id = ?', [req.params.id]);
     res.json({ message: 'Tarea eliminada exitosamente' });
   } catch (err) {
     console.error('Delete task error:', err);
