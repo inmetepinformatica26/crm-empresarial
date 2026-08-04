@@ -38,6 +38,24 @@ router.get('/', verifyToken, async (req, res) => {
   }
 });
 
+// GET /api/projects/tasks/all - obtener todas las tareas de proyectos existentes
+router.get('/tasks/all', verifyToken, async (req, res) => {
+  try {
+    const { queryAll } = getDB();
+    const tasks = queryAll(`
+      SELECT t.*, p.name as project_name, u.full_name as assigned_name 
+      FROM tasks t 
+      INNER JOIN projects p ON t.project_id = p.id 
+      LEFT JOIN users u ON t.assigned_to = u.id 
+      ORDER BY p.name, t.created_at DESC
+    `);
+    res.json(tasks);
+  } catch (err) {
+    console.error('Get all tasks error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
 // GET /api/projects/dashboard/stats
 router.get('/dashboard/stats', verifyToken, async (req, res) => {
   try {
@@ -138,13 +156,15 @@ router.put('/:id', verifyToken, async (req, res) => {
   }
 });
 
-// DELETE /api/projects/:id
+// DELETE /api/projects/:id - elimina proyecto y sus tareas asociadas
 router.delete('/:id', verifyToken, async (req, res) => {
   try {
     const { run, queryOne } = getDB();
     const existing = queryOne('SELECT * FROM projects WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Proyecto no encontrado' });
 
+    // Delete associated tasks first
+    run('DELETE FROM tasks WHERE project_id = ?', [req.params.id]);
     run('DELETE FROM projects WHERE id = ?', [req.params.id]);
     run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
       [req.user.id, 'delete', 'project', req.params.id, 'Proyecto eliminado: ' + existing.name]);

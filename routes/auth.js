@@ -101,7 +101,7 @@ router.get('/profile', verifyToken, async (req, res) => {
   }
 });
 
-// GET /api/auth/users
+// GET /api/auth/users - admin only
 router.get('/users', verifyToken, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
@@ -112,6 +112,114 @@ router.get('/users', verifyToken, async (req, res) => {
     res.json(users);
   } catch (err) {
     console.error('Users error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// GET /api/auth/assignable - accessible by any authenticated user for project assignment
+router.get('/assignable', verifyToken, async (req, res) => {
+  try {
+    const { queryAll } = getDB();
+    const users = queryAll('SELECT id, full_name FROM users WHERE active = 1 ORDER BY full_name');
+    res.json(users);
+  } catch (err) {
+    console.error('Assignable users error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// PUT /api/auth/users/:id/toggle-status - admin only
+router.put('/users/:id/toggle-status', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+    const { run, queryOne } = getDB();
+    const user = queryOne('SELECT id, active FROM users WHERE id = ?', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    
+    const newStatus = user.active ? 0 : 1;
+    run('UPDATE users SET active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newStatus, req.params.id]);
+    
+    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+      [req.user.id, 'update', 'user', req.params.id, 'Usuario ' + (newStatus ? 'activado' : 'desactivado')]);
+    
+    res.json({ message: 'Usuario ' + (newStatus ? 'activado' : 'desactivado') + ' exitosamente', active: newStatus });
+  } catch (err) {
+    console.error('Toggle user status error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// PUT /api/auth/users/:id - admin only (editar usuario)
+router.put('/users/:id', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    const { run, queryOne } = getDB();
+    const user = queryOne('SELECT * FROM users WHERE id = ?', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const { username, email, password, full_name, role } = req.body;
+
+    // Check if username or email already taken by another user
+    if (username || email) {
+      const existing = queryOne('SELECT id FROM users WHERE (email = ? OR username = ?) AND id != ?', 
+        [email || user.email, username || user.username, req.params.id]);
+      if (existing) {
+        return res.status(400).json({ error: 'El usuario o email ya existe' });
+      }
+    }
+
+    let updateSql = 'UPDATE users SET full_name=?, email=?, username=?, role=?, updated_at=CURRENT_TIMESTAMP';
+    const params = [full_name || user.full_name, email || user.email, username || user.username, role || user.role];
+
+    if (password) {
+      const hashedPassword = bcrypt.hashSync(password, 10);
+      updateSql += ', password=?';
+      params.push(hashedPassword);
+    }
+
+    updateSql += ' WHERE id=?';
+    params.push(req.params.id);
+
+    run(updateSql, params);
+
+    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+      [req.user.id, 'update', 'user', req.params.id, 'Usuario actualizado: ' + (full_name || user.full_name)]);
+
+    const updated = queryOne('SELECT id, username, email, full_name, role, active, created_at FROM users WHERE id = ?', [req.params.id]);
+    res.json(updated);
+  } catch (err) {
+    console.error('Update user error:', err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// DELETE /api/auth/users/:id - admin only
+router.delete('/users/:id', verifyToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado' });
+    }
+
+    const { run, queryOne } = getDB();
+    const user = queryOne('SELECT * FROM users WHERE id = ?', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+    
+    if (user.id === req.user.id) {
+      return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
+    }
+
+    run('DELETE FROM users WHERE id = ?', [req.params.id]);
+    run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',
+      [req.user.id, 'delete', 'user', req.params.id, 'Usuario eliminado: ' + user.full_name]);
+
+    res.json({ message: 'Usuario eliminado exitosamente' });
+  } catch (err) {
+    console.error('Delete user error:', err);
     res.status(500).json({ error: 'Error interno del servidor' });
   }
 });

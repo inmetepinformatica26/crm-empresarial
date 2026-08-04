@@ -61,8 +61,18 @@ const API = {
     return this.request('/auth/profile');
   },
 
-  getUsers() {
+getUsers() {
     return this.request('/auth/users');
+  },
+
+  getAssignableUsers() {
+    return this.request('/auth/assignable');
+  },
+
+  toggleUserStatus(id) {
+    return this.request(`/auth/users/${id}/toggle-status`, {
+      method: 'PUT'
+    });
   },
 
   registerUser(userData) {
@@ -153,8 +163,39 @@ const API = {
     });
   },
 
-  // Dashboard
+// Tasks
+  getAllTasks() {
+    return this.request('/projects/tasks/all');
+  },
+
+// Dashboard
   getDashboardStats() {
     return this.request('/projects/dashboard/stats');
+  },
+
+  // Settings
+  getSettings() {
+    return this.request('/settings');
+  },
+
+  updateSettings(data) {
+    return this.request('/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  },
+
+  // User management
+  updateUser(id, userData) {
+    return this.request(`/auth/users/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(userData)
+    });
+  },
+
+  deleteUser(id) {
+    return this.request(`/auth/users/${id}`, {
+      method: 'DELETE'
+    });
   }
 };

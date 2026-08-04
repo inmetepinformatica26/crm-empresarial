@@ -7,14 +7,15 @@ const getDatabase = require('./database');
 const authRoutes = require('./routes/auth');
 const clientRoutes = require('./routes/clients');
 const projectRoutes = require('./routes/projects');
+const settingsRoutes = require('./routes/settings');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -31,6 +32,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/projects', projectRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Serve frontend for all other routes
 app.get('*', (req, res) => {

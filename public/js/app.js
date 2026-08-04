@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('clientForm').addEventListener('submit', handleClientSave);
   document.getElementById('projectForm').addEventListener('submit', handleProjectSave);
   document.getElementById('userForm').addEventListener('submit', handleUserSave);
+  document.getElementById('editUserForm').addEventListener('submit', handleEditUserSave);
   updateCurrentDate();
   setInterval(updateCurrentDate, 60000);
 });
@@ -53,9 +54,107 @@ async function initializeApp() {
   document.getElementById('userRole').textContent = currentUser.role;
   if (currentUser.role === 'admin') {
     document.getElementById('usersNav').style.display = 'flex';
+    document.getElementById('settingsBtn').style.display = 'flex';
   }
+  loadSettings();
   showSection('dashboard');
   loadDashboard();
+}
+
+// ===== Configuración de Empresa =====
+async function loadSettings() {
+  try {
+    const settings = await API.getSettings();
+    if (settings.company_name) {
+      document.getElementById('loginCompanyName').textContent = settings.company_name;
+      document.getElementById('sidebarCompanyName').textContent = settings.company_name;
+      fitSidebarTitle();
+    }
+    if (settings.logo) {
+      document.getElementById('loginLogo').src = settings.logo;
+      document.getElementById('sidebarLogo').src = settings.logo;
+    }
+  } catch (e) {
+    console.error('Error cargando configuración:', e);
+  }
+}
+
+// Ajusta el tamaño de fuente del título del sidebar para que el nombre completo quepa sin puntos suspensivos
+function fitSidebarTitle() {
+  const el = document.getElementById('sidebarCompanyName');
+  if (!el) return;
+  // Reset a tamaño base
+  el.style.fontSize = '20px';
+  // Reducir progresivamente hasta que el texto quepa en una sola línea, con un mínimo legible
+  // Si aún con el mínimo no cabe, se dejará que el texto envuelva (wrap) en varias líneas
+  let size = 20;
+  while (size > 12 && el.scrollWidth > el.clientWidth + 1) {
+    size -= 1;
+    el.style.fontSize = size + 'px';
+  }
+  // Guardar el tamaño actual para el ajuste responsivo
+  el.dataset.fitSize = size;
+}
+
+// Re-ajusta el título al cambiar el tamaño de la ventana / al contraer el sidebar
+function refitSidebarTitle() {
+  const el = document.getElementById('sidebarCompanyName');
+  if (!el) return;
+  const current = el.textContent;
+  if (current) {
+    fitSidebarTitle();
+  }
+}
+
+window.addEventListener('resize', refitSidebarTitle);
+
+function openSettingsModal() {
+  // Cargar valores actuales
+  document.getElementById('settingsCompanyName').value = document.getElementById('sidebarCompanyName').textContent;
+  const logo = document.getElementById('sidebarLogo').src;
+  if (logo && logo !== 'data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><text y=\'.9em\' font-size=\'90\'>🏢</text></svg>') {
+    document.getElementById('settingsLogoPreview').src = logo;
+  } else {
+    document.getElementById('settingsLogoPreview').src = 'data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><text y=\'.9em\' font-size=\'90\'>🏢</text></svg>';
+  }
+  openModal('settingsModal');
+}
+
+let pendingLogo = null;
+
+function onLogoSelected(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    pendingLogo = e.target.result;
+    document.getElementById('settingsLogoPreview').src = pendingLogo;
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeLogo() {
+  pendingLogo = null;
+  document.getElementById('settingsLogoPreview').src = 'data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><text y=\'.9em\' font-size=\'90\'>🏢</text></svg>';
+}
+
+async function saveSettings() {
+  try {
+    const companyName = document.getElementById('settingsCompanyName').value.trim();
+    const data = {};
+    if (companyName) {
+      data.company_name = companyName;
+    }
+    if (pendingLogo) {
+      data.logo = pendingLogo;
+    }
+    await API.updateSettings(data);
+    showToast('Configuración guardada exitosamente', 'success');
+    closeModal('settingsModal');
+    loadSettings();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
 }
 
 function logout() {
@@ -70,6 +169,10 @@ function logout() {
 
 // ===== Navigation =====
 function showSection(section) {
+  if (section === 'users' && currentUser && currentUser.role !== 'admin') {
+    showToast('Acceso denegado. Solo administradores.', 'error');
+    section = 'dashboard';
+  }
   document.querySelectorAll('.nav-item').forEach(item => {
     item.classList.toggle('active', item.dataset.section === section);
   });
@@ -123,16 +226,27 @@ async function loadDashboard() {
     document.getElementById('totalProjects').textContent = stats.activeProjects;
     document.getElementById('totalTasks').textContent = stats.pendingTasks;
     document.getElementById('totalUsers').textContent = stats.totalUsers;
+
+    // Make tasks card clickable
+    const cards = document.querySelectorAll('.stat-card');
+    cards.forEach(card => {
+      const label = card.querySelector('.stat-label');
+      if (label && label.textContent === 'Tareas Pendientes') {
+        card.onclick = viewAllTasks;
+      }
+    });
+
     const activityEl = document.getElementById('recentActivity');
     if (stats.recentActivity.length === 0) {
       activityEl.innerHTML = '<p class="text-muted">Sin actividad reciente</p>';
     } else {
       activityEl.innerHTML = '<ul class="activity-list">' + stats.recentActivity.map(a => {
-        const ic = a.action === 'create' ? 'create' : a.action === 'update' ? 'update' : a.action === 'delete' ? 'delete' : 'login';
         const icons = { create: 'fa-plus', update: 'fa-edit', delete: 'fa-trash', login: 'fa-sign-in-alt' };
-        return '<li class="activity-item"><div class="activity-icon ' + ic + '"><i class="fas ' + (icons[a.action] || 'fa-circle') + '"></i></div><div class="activity-detail"><div class="activity-action">' + escapeHtml(a.description) + '</div><div class="activity-time">' + (a.user_name || 'Sistema') + ' · ' + formatDate(a.created_at) + '</div></div></li>';
+        const ic = a.action === 'create' ? 'create' : a.action === 'update' ? 'update' : a.action === 'delete' ? 'delete' : 'login';
+        return '<li class="activity-item"><div class="activity-icon ' + ic + '"><i class="fas ' + (icons[a.action] || 'fa-circle') + '"></i></div><div class="activity-detail"><div class="activity-action">' + escapeHtml(a.description) + '</div><div class="activity-time">' + (a.user_name || 'Sistema') + ' &middot; ' + formatDate(a.created_at) + '</div></li>';
       }).join('') + '</ul>';
     }
+
     const statusEl = document.getElementById('projectsByStatus');
     const sLabels = { planning: 'Planificacion', in_progress: 'En Progreso', on_hold: 'En Pausa', completed: 'Completado', cancelled: 'Cancelado' };
     const colors = { planning: '#3b82f6', in_progress: '#10b981', on_hold: '#f59e0b', completed: '#6b7280', cancelled: '#ef4444' };
@@ -140,10 +254,29 @@ async function loadDashboard() {
       statusEl.innerHTML = '<p class="text-muted">Sin proyectos registrados</p>';
     } else {
       const total = stats.projectsByStatus.reduce((sum, s) => sum + s.count, 0);
-      statusEl.innerHTML = stats.projectsByStatus.map(s => '<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;"><span>' + (sLabels[s.status] || s.status) + '</span><span><strong>' + s.count + '</strong> (' + Math.round(s.count/total*100) + '%)</span></div><div style="height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden;"><div style="height:100%;width:' + (s.count/total*100) + '%;background:' + (colors[s.status] || '#3b82f6') + ';border-radius:4px;transition:width 0.3s;"></div></div></div>').join('');
+      statusEl.innerHTML = stats.projectsByStatus.map(s => '<div style="margin-bottom:12px;"><div style="display:flex;justify-content:space-between;font-size:14px;margin-bottom:4px;"><span>' + (sLabels[s.status] || s.status) + '</span><span><strong>' + s.count + '</strong> (' + Math.round(s.count / total * 100) + '%)</span></div><div style="height:8px;background:#f1f5f9;border-radius:4px;overflow:hidden;"><div style="height:100%;width:' + (s.count / total * 100) + '%;background:' + (colors[s.status] || '#3b82f6') + ';border-radius:4px;transition:width 0.3s;"></div></div>').join('');
     }
   } catch (error) {
     console.error('Dashboard error:', error);
+  }
+}
+
+// ===== View All Tasks =====
+async function viewAllTasks() {
+  try {
+    document.getElementById('tasksModalBody').innerHTML = '<p class="text-muted">Cargando...</p>';
+    openModal('tasksModal');
+    const tasks = await API.getAllTasks();
+    const tLabels = { pending: 'Pendiente', in_progress: 'En Progreso', completed: 'Completada', cancelled: 'Cancelada' };
+    const pLabels = { low: 'Baja', medium: 'Media', high: 'Alta', urgent: 'Urgente' };
+    if (tasks.length === 0) {
+      document.getElementById('tasksModalBody').innerHTML = '<p class="text-muted">No hay tareas registradas</p>';
+      return;
+    }
+    document.getElementById('tasksModalBody').innerHTML = '<div class="table-container"><table class="table"><thead><tr><th>Tarea</th><th>Proyecto</th><th>Asignado</th><th>Estado</th><th>Prioridad</th><th>Vence</th></tr></thead><tbody>' + tasks.map(t => '<tr><td><strong>' + escapeHtml(t.title) + '</strong></td><td>' + (t.project_name || '<span class="text-muted">&mdash;</span>') + '</td><td>' + (t.assigned_name || '<span class="text-muted">&mdash;</span>') + '</td><td><span class="status-badge status-' + t.status + '">' + (tLabels[t.status] || t.status) + '</span></td><td><span class="status-badge priority-' + t.priority + '">' + (pLabels[t.priority] || t.priority) + '</span></td><td>' + (t.due_date || '<span class="text-muted">&mdash;</span>') + '</td></tr>').join('') + '</tbody></table></div>';
+  } catch (error) {
+    document.getElementById('tasksModalBody').innerHTML = '<p class="text-danger">Error: ' + error.message + '</p>';
+    showToast('Error: ' + error.message, 'error');
   }
 }
 
@@ -160,7 +293,7 @@ async function loadClients(search) {
       tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No se encontraron clientes</td></tr>';
       return;
     }
-    tbody.innerHTML = clients.map(c => '<tr><td><strong>' + escapeHtml(c.company_name) + '</strong></td><td>' + escapeHtml(c.contact_name) + '</td><td>' + (c.email ? '<a href="mailto:' + c.email + '">' + escapeHtml(c.email) + '</a>' : '<span class="text-muted">—</span>') + '</td><td>' + (c.phone || '<span class="text-muted">—</span>') + '</td><td><span class="status-badge status-' + c.status + '">' + statusLabel(c.status) + '</span></td><td><div class="action-btns"><button class="btn-view" onclick="editClient(' + c.id + ')" title="Editar"><i class="fas fa-edit"></i></button><button class="btn-delete" onclick="deleteClient(' + c.id + ')" title="Eliminar"><i class="fas fa-trash"></i></button></div></td></tr>').join('');
+    tbody.innerHTML = clients.map(c => '<tr><td><strong>' + escapeHtml(c.company_name) + '</strong></td><td>' + escapeHtml(c.contact_name) + '</td><td>' + (c.email ? '<a href="mailto:' + c.email + '">' + escapeHtml(c.email) + '</a>' : '<span class="text-muted">&mdash;</span>') + '</td><td>' + (c.phone || '<span class="text-muted">&mdash;</span>') + '</td><td><span class="status-badge status-' + c.status + '">' + statusLabel(c.status) + '</span></td><td><div class="action-btns"><button class="btn-view" onclick="editClient(' + c.id + ')" title="Editar"><i class="fas fa-edit"></i></button><button class="btn-delete" onclick="deleteClient(' + c.id + ')" title="Eliminar"><i class="fas fa-trash"></i></button></div></td></tr>').join('');
   } catch (error) {
     document.getElementById('clientsBody').innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error: ' + error.message + '</td></tr>';
   }
@@ -249,7 +382,7 @@ async function loadProjects(search) {
       tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No se encontraron proyectos</td></tr>';
       return;
     }
-    tbody.innerHTML = projects.map(p => '<tr><td><strong>' + escapeHtml(p.name) + '</strong></td><td>' + (p.client_name || '<span class="text-muted">Sin cliente</span>') + '</td><td><span class="status-badge status-' + p.status + '">' + projectStatusLabel(p.status) + '</span></td><td><span class="status-badge priority-' + p.priority + '">' + priorityLabel(p.priority) + '</span></td><td>' + (p.start_date || '<span class="text-muted">—</span>') + '</td><td>' + (p.end_date || '<span class="text-muted">—</span>') + '</td><td><div class="action-btns"><button class="btn-view" onclick="viewProject(' + p.id + ')" title="Ver detalle"><i class="fas fa-eye"></i></button><button class="btn-edit" onclick="editProject(' + p.id + ')" title="Editar"><i class="fas fa-edit"></i></button><button class="btn-delete" onclick="deleteProject(' + p.id + ')" title="Eliminar"><i class="fas fa-trash"></i></button></div></td></tr>').join('');
+    tbody.innerHTML = projects.map(p => '<tr><td><strong>' + escapeHtml(p.name) + '</strong></td><td>' + (p.client_name || '<span class="text-muted">Sin cliente</span>') + '</td><td><span class="status-badge status-' + p.status + '">' + projectStatusLabel(p.status) + '</span></td><td><span class="status-badge priority-' + p.priority + '">' + priorityLabel(p.priority) + '</span></td><td>' + (p.start_date || '<span class="text-muted">&mdash;</span>') + '</td><td>' + (p.end_date || '<span class="text-muted">&mdash;</span>') + '</td><td><div class="action-btns"><button class="btn-view" onclick="viewProject(' + p.id + ')" title="Ver detalle"><i class="fas fa-eye"></i></button><button class="btn-edit" onclick="editProject(' + p.id + ')" title="Editar"><i class="fas fa-edit"></i></button><button class="btn-delete" onclick="deleteProject(' + p.id + ')" title="Eliminar"><i class="fas fa-trash"></i></button></div></td></tr>').join('');
   } catch (error) {
     document.getElementById('projectsBody').innerHTML = '<tr><td colspan="7" class="text-center text-danger">Error: ' + error.message + '</td></tr>';
   }
@@ -261,8 +394,10 @@ function searchProjects() {
 
 async function openProjectModal(projectData) {
   try {
-    const clients = await API.getClients();
-    const users = await API.getUsers();
+    const [clients, users] = await Promise.all([
+      API.getClients({ status: 'active' }),
+      API.getAssignableUsers()
+    ]);
     const clientSelect = document.getElementById('projectClient');
     clientSelect.innerHTML = '<option value="">Seleccionar cliente</option>' + clients.map(c => '<option value="' + c.id + '">' + escapeHtml(c.company_name) + '</option>').join('');
     const assignedSelect = document.getElementById('projectAssigned');
@@ -334,33 +469,97 @@ async function handleProjectSave(e) {
   }
 }
 
+// ===== View Project Detail (FIXED - proper HTML structure) =====
 async function viewProject(id) {
   try {
     const project = await API.getProject(id);
     const sLabels = { planning: 'Planificacion', in_progress: 'En Progreso', on_hold: 'En Pausa', completed: 'Completado', cancelled: 'Cancelado' };
     const pLabels = { low: 'Baja', medium: 'Media', high: 'Alta', urgent: 'Urgente' };
     const tLabels = { pending: 'Pendiente', in_progress: 'En Progreso', completed: 'Completada', cancelled: 'Cancelada' };
-    let html = '<div class="project-detail"><div class="info-grid">';
-    html += '<div class="info-item"><label>Estado</label><span class="status-badge status-' + project.status + '">' + (sLabels[project.status] || project.status) + '</span></div>';
-    html += '<div class="info-item"><label>Prioridad</label><span class="status-badge priority-' + project.priority + '">' + (pLabels[project.priority] || project.priority) + '</span></div>';
-    html += '<div class="info-item"><label>Cliente</label><div>' + (project.client_name || 'Sin cliente') + '</div></div>';
-    html += '<div class="info-item"><label>Asignado a</label><div>' + (project.assigned_name || 'Sin asignar') + '</div></div>';
-    html += '<div class="info-item"><label>Fecha Inicio</label><div>' + (project.start_date || '—') + '</div></div>';
-    html += '<div class="info-item"><label>Fecha Fin</label><div>' + (project.end_date || '—') + '</div></div>';
-    html += '<div class="info-item"><label>Presupuesto</label><div>S/ ' + (project.budget ? project.budget.toFixed(2) : '0.00') + '</div></div>';
-    html += '<div class="info-item"><label>Creado por</label><div>' + (project.creator_name || '—') + '</div></div></div>';
+
+    var html = '';
+    html += '<div class="project-detail">';
+    html += '<div class="info-grid">';
+
+    html += '<div class="info-item">';
+    html += '<label>Estado</label>';
+    html += '<div><span class="status-badge status-' + project.status + '">' + (sLabels[project.status] || project.status) + '</span></div>';
+    html += '</div>';
+
+    html += '<div class="info-item">';
+    html += '<label>Prioridad</label>';
+    html += '<div><span class="status-badge priority-' + project.priority + '">' + (pLabels[project.priority] || project.priority) + '</span></div>';
+    html += '</div>';
+
+    html += '<div class="info-item">';
+    html += '<label>Cliente</label>';
+    html += '<div>' + (project.client_name || 'Sin cliente') + '</div>';
+    html += '</div>';
+
+    html += '<div class="info-item">';
+    html += '<label>Asignado a</label>';
+    html += '<div>' + (project.assigned_name || 'Sin asignar') + '</div>';
+    html += '</div>';
+
+    html += '<div class="info-item">';
+    html += '<label>Fecha Inicio</label>';
+    html += '<div>' + (project.start_date || '&mdash;') + '</div>';
+    html += '</div>';
+
+    html += '<div class="info-item">';
+    html += '<label>Fecha Fin</label>';
+    html += '<div>' + (project.end_date || '&mdash;') + '</div>';
+    html += '</div>';
+
+    html += '<div class="info-item">';
+    html += '<label>Presupuesto</label>';
+html += '<div>$ ' + (project.budget ? project.budget.toFixed(2) : '0.00') + '</div>';
+    html += '</div>';
+
+    html += '<div class="info-item">';
+    html += '<label>Creado por</label>';
+    html += '<div>' + (project.creator_name || '&mdash;') + '</div>';
+    html += '</div>';
+
+    html += '</div>'; // close info-grid
+
     if (project.description) {
-      html += '<h4>Descripcion</h4><p>' + escapeHtml(project.description) + '</p>';
+      html += '<h4 style="margin-top:20px;color:#475569;">Descripcion</h4>';
+      html += '<p>' + escapeHtml(project.description) + '</p>';
     }
-    html += '<h4>Tareas (' + project.tasks.length + ')</h4>';
+
+    html += '<h4 style="margin-top:20px;color:#475569;">Tareas (' + project.tasks.length + ')</h4>';
     html += '<div style="margin-bottom:15px;"><button class="btn btn-primary btn-sm" onclick="addTask(' + project.id + ')"><i class="fas fa-plus"></i> Agregar Tarea</button></div>';
+
     if (project.tasks.length === 0) {
       html += '<p class="text-muted">Sin tareas registradas</p>';
     } else {
-      html += project.tasks.map(t => '<div class="task-item"><div class="task-info"><div class="task-title">' + escapeHtml(t.title) + '</div><div class="task-meta">' + (t.assigned_name ? 'Asignado: ' + t.assigned_name + ' · ' : '') + (t.due_date ? 'Vence: ' + t.due_date + ' · ' : '') + '<span class="status-badge status-' + t.status + '">' + (tLabels[t.status] || t.status) + '</span></div></div><div class="action-btns">' + (t.status !== 'completed' ? '<button class="btn-edit btn-sm" onclick="completeTask(' + t.id + ',' + project.id + ')" title="Completar"><i class="fas fa-check"></i></button>' : '') + '<button class="btn-delete btn-sm" onclick="deleteTask(' + t.id + ',' + project.id + ')" title="Eliminar"><i class="fas fa-trash"></i></button></div></div>').join('');
+      html += '<div class="task-list">';
+      for (var i = 0; i < project.tasks.length; i++) {
+        var t = project.tasks[i];
+        html += '<div class="task-item">';
+        html += '<div class="task-info">';
+        html += '<div class="task-title">' + escapeHtml(t.title) + '</div>';
+        html += '<div class="task-meta">';
+        if (t.assigned_name) { html += 'Asignado: ' + escapeHtml(t.assigned_name) + ' &middot; '; }
+        if (t.due_date) { html += 'Vence: ' + t.due_date + ' &middot; '; }
+        html += '<span class="status-badge status-' + t.status + '">' + (tLabels[t.status] || t.status) + '</span>';
+        html += '</div>'; // close task-meta
+        html += '</div>'; // close task-info
+        html += '<div class="action-btns">';
+        if (t.status !== 'completed') {
+          html += '<button class="btn-edit btn-sm" onclick="completeTask(' + t.id + ',' + project.id + ')" title="Completar"><i class="fas fa-check"></i></button>';
+        }
+        html += '<button class="btn-delete btn-sm" onclick="deleteTask(' + t.id + ',' + project.id + ')" title="Eliminar"><i class="fas fa-trash"></i></button>';
+        html += '</div>'; // close action-btns
+        html += '</div>'; // close task-item
+      }
+      html += '</div>'; // close task-list
     }
-    html += '</div>';
-    document.getElementById('viewProjectTitle').textContent = '📋 ' + escapeHtml(project.name);
+
+    html += '</div>'; // close project-detail
+
+    document.getElementById('viewProjectTitle').textContent = '\uD83D\uDCCB ' + escapeHtml(project.name);
     document.getElementById('viewProjectBody').innerHTML = html;
     openModal('viewProjectModal');
   } catch (error) {
@@ -368,8 +567,9 @@ async function viewProject(id) {
   }
 }
 
+// ===== Task Management =====
 async function addTask(projectId) {
-  const title = prompt('Nombre de la tarea:');
+  var title = prompt('Nombre de la tarea:');
   if (!title) return;
   try {
     await API.createTask(projectId, { title: title });
@@ -412,7 +612,9 @@ async function loadUsers() {
       tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No hay usuarios registrados</td></tr>';
       return;
     }
-    tbody.innerHTML = users.map(u => '<tr><td><strong>' + escapeHtml(u.full_name) + '</strong></td><td>' + escapeHtml(u.email) + '</td><td>' + escapeHtml(u.username) + '</td><td><span class="status-badge ' + (u.role === 'admin' ? 'status-active' : 'status-in_progress') + '">' + (u.role === 'admin' ? 'Administrador' : 'Usuario') + '</span></td><td><span class="status-badge ' + (u.active ? 'status-active' : 'status-inactive') + '">' + (u.active ? 'Activo' : 'Inactivo') + '</span></td><td><div class="action-btns"><button class="btn-delete" onclick="deactivateUser(' + u.id + ')" title="' + (u.active ? 'Desactivar' : 'Activar') + '"><i class="fas ' + (u.active ? 'fa-ban' : 'fa-check') + '"></i></button></div></td></tr>').join('');
+    tbody.innerHTML = users.map(function(u) {
+      return '<tr><td><strong>' + escapeHtml(u.full_name) + '</strong></td><td>' + escapeHtml(u.email) + '</td><td>' + escapeHtml(u.username) + '</td><td><span class="status-badge ' + (u.role === 'admin' ? 'status-active' : 'status-in_progress') + '">' + (u.role === 'admin' ? 'Administrador' : 'Usuario') + '</span></td><td><span class="status-badge ' + (u.active ? 'status-active' : 'status-inactive') + '">' + (u.active ? 'Activo' : 'Inactivo') + '</span></td><td><div class="action-btns"><button class="btn-view" onclick="editUser(' + u.id + ')" title="Editar"><i class="fas fa-edit"></i></button><button class="btn-edit" onclick="deactivateUser(' + u.id + ')" title="' + (u.active ? 'Desactivar' : 'Activar') + '"><i class="fas ' + (u.active ? 'fa-ban' : 'fa-check') + '"></i></button><button class="btn-delete" onclick="deleteUser(' + u.id + ')" title="Eliminar"><i class="fas fa-trash"></i></button></div></td></tr>';
+    }).join('');
   } catch (error) {
     document.getElementById('usersBody').innerHTML = '<tr><td colspan="6" class="text-center text-danger">Error: ' + error.message + '</td></tr>';
   }
@@ -425,7 +627,7 @@ function openUserModal() {
 
 async function handleUserSave(e) {
   e.preventDefault();
-  const data = {
+  var data = {
     username: document.getElementById('userUsername').value,
     email: document.getElementById('userEmail').value,
     password: document.getElementById('userPassword').value,
@@ -442,8 +644,64 @@ async function handleUserSave(e) {
   }
 }
 
+// ===== User Management: Deactivate, Edit, Delete =====
 async function deactivateUser(id) {
-  showToast('Funcionalidad en desarrollo', 'info');
+  var user = usersCache.find(function(u) { return u.id === id; });
+  var action = user && user.active ? 'desactivar' : 'activar';
+  if (!confirm('Esta seguro de ' + action + ' este usuario?')) return;
+  try {
+    var result = await API.toggleUserStatus(id);
+    showToast(result.message, 'success');
+    loadUsers();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+function editUser(id) {
+  var user = usersCache.find(function(u) { return u.id === id; });
+  if (!user) return;
+  document.getElementById('editUserId').value = user.id;
+  document.getElementById('editUserFullName').value = user.full_name;
+  document.getElementById('editUserUsername').value = user.username;
+  document.getElementById('editUserEmail').value = user.email;
+  document.getElementById('editUserPassword').value = '';
+  document.getElementById('editUserRole').value = user.role;
+  openModal('editUserModal');
+}
+
+async function handleEditUserSave(e) {
+  e.preventDefault();
+  var id = document.getElementById('editUserId').value;
+  var data = {
+    full_name: document.getElementById('editUserFullName').value,
+    username: document.getElementById('editUserUsername').value,
+    email: document.getElementById('editUserEmail').value,
+    role: document.getElementById('editUserRole').value
+  };
+  var password = document.getElementById('editUserPassword').value;
+  if (password) {
+    data.password = password;
+  }
+  try {
+    await API.updateUser(id, data);
+    showToast('Usuario actualizado exitosamente', 'success');
+    closeModal('editUserModal');
+    loadUsers();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+async function deleteUser(id) {
+  if (!confirm('Esta seguro de eliminar este usuario? Esta accion no se puede deshacer.')) return;
+  try {
+    await API.deleteUser(id);
+    showToast('Usuario eliminado exitosamente', 'success');
+    loadUsers();
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
 }
 
 // ===== Utility Functions =====
@@ -483,4 +741,3 @@ function priorityLabel(priority) {
   var labels = { low: 'Baja', medium: 'Media', high: 'Alta', urgent: 'Urgente' };
   return labels[priority] || priority;
 }
-

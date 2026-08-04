@@ -212,6 +212,7 @@ body {
   align-items: center;
   gap: 12px;
   border-bottom: 1px solid rgba(255,255,255,0.1);
+  min-width: 0;
 }
 
 .sidebar-header i {
@@ -219,10 +220,23 @@ body {
   color: var(--primary);
 }
 
+.sidebar-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--white);
+  flex-shrink: 0;
+}
+
 .sidebar-title {
   font-size: 20px;
   font-weight: 700;
-  white-space: nowrap;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .sidebar-nav {
@@ -316,6 +330,34 @@ body {
 .btn-logout:hover {
   color: var(--danger);
   background: rgba(239, 68, 68, 0.1);
+}
+
+.sidebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#settingsBtn:hover {
+  color: var(--primary);
+  background: rgba(37, 99, 235, 0.15);
+}
+
+.login-logo-img {
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+  margin-bottom: 15px;
+}
+
+.settings-logo-preview {
+  width: 120px;
+  height: 120px;
+  object-fit: contain;
+  border: 2px solid #e2e8f0;
+  border-radius: var(--radius);
+  padding: 8px;
+  background: var(--gray-light);
 }
 
 /* ===== Main Content ===== */
@@ -652,6 +694,8 @@ body {
 
 .modal.active {
   display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modal-content {
