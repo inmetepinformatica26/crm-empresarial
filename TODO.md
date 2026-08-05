@@ -24,7 +24,7 @@
 - [x] 4. `public/js/app.js`: `loadSettings()` actualiza `loginLogo`, `loginCompanyName`, `sidebarLogo` y `sidebarCompanyName`
 - [x] 5. Probado localmente: `GET /api/settings` sin token responde `200` con `company_name` y `logo`
 - [x] 6. Confirmado que `/api/settings` está registrado ANTES del catch-all `*` en `server.js`
-- [ ] 7. Hacer deploy en Render y verificar refrescando la pantalla de login
+- [x] 7. Hacer deploy en Render y verificar refrescando la pantalla de login → **VERIFICADO**: `https://crm-empresarial.onrender.com/api/settings` responde 200 con `company_name` y `logo`
 
 ## Verificación en producción (Render) ✅
 
