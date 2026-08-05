@@ -1,15 +1,25 @@
-# TODO - Logo y Nombre de Empresa editable
+# TODO - Verificación: la base de datos no debe reiniciarse al subir a Render
 
-## Backend
-- [ ] 1. `database.js`: Agregar tabla `settings` (setting_key, setting_value)
-- [ ] 2. Crear `routes/settings.js` con GET/PUT /api/settings
-- [ ] 3. `server.js`: Montar ruta /api/settings
+## Verificar que PostgreSQL persiste en deploys de Render
 
-## Frontend
-- [ ] 4. `public/index.html`: Reemplazar íconos por <img> del logo, agregar botón config y modal
-- [ ] 5. `public/css/style.css`: Estilos para logo, botón y modal de configuración
-- [ ] 6. `public/js/api.js`: Métodos getSettings() y updateSettings()
-- [ ] 7. `public/js/app.js`: Cargar/aplicar logo, abrir/guardar configuración, favicon dinámico
+- [x] 1. Analizar `database.js`: usa `process.env.DATABASE_URL` para elegir PostgreSQL
+- [x] 2. Confirmar que `createTables()` usa `CREATE TABLE IF NOT EXISTS` (no reinicia datos)
+- [x] 3. Confirmar que `seedDefaultAdmin()` es idempotente (solo crea admin si no hay usuarios)
+## Cambios realizados en el código
+- [x] 4. `database.js`: Log explícito del motor usado al arrancar (PostgreSQL / SQLite) - ya existía
+- [x] 5. `database.js`: Guarda de seguridad - si corre en Render sin DATABASE_URL, lanzar error y detener
+- [x] 6. `server.js`: Endpoint `GET /api/health` que reporta motor y estado (sin token)
+- [x] 7. Exportada `USE_POSTGRES` desde database.js para uso en health check
+- [x] 8. Probado `/api/health` localmente (SQLite) -> responde 200 con engine correcto
+- [x] 9. Probada la guarda de seguridad: RENDER sin DATABASE_URL lanza error y detiene arranque
+- [x] 10. Corregido bug PUT /api/settings (500): `run()` agregaba `RETURNING id` a tablas sin columna `id`
+- [x] 11. Corregido bug DELETE usuario (500): limpiar dependencias (activity_log, clients, projects, tasks) antes de borrar
+- [ ] 12. Guía de verificación en Render Dashboard (GPS)
 
-## Verificación
-- [ ] 8. Reiniciar servidor y probar
+## Verificación en producción (Render)
+
+- [ ] Revisar que el proyecto tiene un servicio **PostgreSQL administrado** conectado
+- [ ] Revisar que la variable de entorno `DATABASE_URL` apunta a la **Internal Database URL**
+- [ ] Hacer un redeploy y revisar logs: debe aparecer "Base de datos PostgreSQL inicializada correctamente"
+- [ ] Llamar `https://<tu-app>.onrender.com/api/health` y verificar `{ engine: "postgres", status: "ok" }`
+

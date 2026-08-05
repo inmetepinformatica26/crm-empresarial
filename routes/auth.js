@@ -154,7 +154,7 @@ router.put('/users/:id/toggle-status', verifyToken, async (req, res) => {
 // PUT /api/auth/users/:id - admin only (editar usuario)
 router.put('/users/:id', verifyToken, async (req, res) => {
   try {
-    if (req.user.role !== 'admin') {
+if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Acceso denegado' });
     }
 
@@ -206,12 +206,20 @@ router.delete('/users/:id', verifyToken, async (req, res) => {
     }
 
     const { run, queryOne } = getDB();
-    const user = await queryOne('SELECT * FROM users WHERE id = ?', [req.params.id]);
+const user = await queryOne('SELECT * FROM users WHERE id = ?', [req.params.id]);
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
     if (user.id === req.user.id) {
       return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
     }
+
+    // Limpiar registros dependientes para evitar violación de clave foránea
+    await run('DELETE FROM activity_log WHERE user_id = ?', [req.params.id]);
+    await run('UPDATE clients SET created_by = NULL WHERE created_by = ?', [req.params.id]);
+    await run('UPDATE projects SET created_by = NULL WHERE created_by = ?', [req.params.id]);
+    await run('UPDATE projects SET assigned_to = NULL WHERE assigned_to = ?', [req.params.id]);
+    await run('UPDATE tasks SET created_by = NULL WHERE created_by = ?', [req.params.id]);
+    await run('UPDATE tasks SET assigned_to = NULL WHERE assigned_to = ?', [req.params.id]);
 
     await run('DELETE FROM users WHERE id = ?', [req.params.id]);
     await run('INSERT INTO activity_log (user_id, action, entity_type, entity_id, description) VALUES (?,?,?,?,?)',

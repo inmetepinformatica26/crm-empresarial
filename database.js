@@ -6,6 +6,16 @@ const path = require('path');
 // En caso contrario (desarrollo local), usa SQLite (sql.js).
 const USE_POSTGRES = !!process.env.DATABASE_URL;
 
+// Guarda de seguridad: en Render el filesystem es EFÍMERO.
+// Si la app se despliega en Render sin DATABASE_URL, NO debe arrancar en
+// SQLite porque todos los datos se perderían en cada deploy/restart.
+if (process.env.RENDER && !process.env.DATABASE_URL) {
+  throw new Error(
+    'Render detectado sin DATABASE_URL: no se puede iniciar en SQLite (filesystem efímero). ' +
+    'Conecta un servicio de PostgreSQL administrado en Render y define la variable DATABASE_URL.'
+  );
+}
+
 const DB_PATH = path.join(__dirname, 'crm_database.db');
 
 let pgPool = null;
@@ -172,6 +182,22 @@ async function seedDefaultAdmin() {
   }
 }
 
+// Cache de tablas que tienen columna id (para RETURNING id en INSERTs)
+const tablesWithIdCache = {};
+async function tableHasId(table) {
+  if (table in tablesWithIdCache) return tablesWithIdCache[table];
+  try {
+    const res = await pgPool.query(
+      "SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name = 'id'",
+      [table]
+    );
+    tablesWithIdCache[table] = res.rows.length > 0;
+  } catch (err) {
+    tablesWithIdCache[table] = true; // ante error, mantener comportamiento original
+  }
+  return tablesWithIdCache[table];
+}
+
 async function queryAll(sql, params) {
   if (!USE_POSTGRES) {
     if (!sqlDb) throw new Error('Database not initialized');
@@ -225,7 +251,10 @@ async function run(sql, params) {
   try {
     let sqlToRun = convertSql(sql);
     if (/^INSERT/i.test(sql.trim()) && !/RETURNING/i.test(sqlToRun)) {
-      sqlToRun += ' RETURNING id';
+      const tableMatch = sqlToRun.match(/INSERT INTO\s+([a-z_0-9]+)/i);
+      if (tableMatch && await tableHasId(tableMatch[1])) {
+        sqlToRun += ' RETURNING id';
+      }
     }
     const result = await pgPool.query(sqlToRun, params || []);
     const lastInsertRowid = result.rows && result.rows.length > 0 ? result.rows[0].id : null;
@@ -240,4 +269,5 @@ module.exports = getDatabase;
 module.exports.queryAll = queryAll;
 module.exports.queryOne = queryOne;
 module.exports.run = run;
+module.exports.USE_POSTGRES = USE_POSTGRES;
 

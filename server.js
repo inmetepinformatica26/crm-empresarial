@@ -28,6 +28,19 @@ app.use('/api/', limiter);
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Health check endpoint - sin token, para monitoreo
+// Se registra ANTES del catch-all (*) para que no sea atrapado por el HTML.
+let dbReady = false;
+const { USE_POSTGRES } = require('./database');
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: dbReady ? 'ok' : 'starting',
+    engine: USE_POSTGRES ? 'postgres' : 'sqlite',
+    database_url_set: !!process.env.DATABASE_URL,
+    render_environment: !!process.env.RENDER
+  });
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
@@ -49,6 +62,8 @@ app.use((err, req, res, next) => {
 async function start() {
   try {
     await getDatabase();
+    dbReady = true;
+
     app.listen(PORT, '0.0.0.0', () => {
       console.log('');
       console.log('===== CRM EMPRESARIAL v1.0 =====');
