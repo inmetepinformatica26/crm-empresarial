@@ -8,7 +8,8 @@ function getDB() {
 }
 
 // GET /api/settings - get company settings (logo + name)
-router.get('/', verifyToken, async (req, res) => {
+// Público (sin token) para que la pantalla de login pueda mostrar el logo y nombre
+router.get('/', async (req, res) => {
   try {
     const { queryAll } = getDB();
     const rows = await queryAll('SELECT setting_key, setting_value FROM settings');

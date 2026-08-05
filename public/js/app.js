@@ -7,6 +7,9 @@ let projectsCache = [];
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
   const token = API.getToken();
+  // Cargar logo y nombre de empresa siempre, incluso en la pantalla de login
+  // (el GET /api/settings ahora es público)
+  loadSettings();
   if (token) {
     initializeApp();
   }
