@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="css/style.css">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏢</text></svg>">
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <!-- Login Screen -->
@@ -191,10 +192,13 @@
       <!-- Projects Section -->
       <section id="section-projects" class="section">
         <div class="section-header">
-          <div class="search-bar">
+<div class="search-bar">
             <i class="fas fa-search"></i>
             <input type="text" id="projectSearch" placeholder="Buscar proyectos..." oninput="searchProjects()">
           </div>
+          <button class="btn btn-secondary" onclick="exportProjectsToExcel()" title="Exportar proyectos a Excel">
+            <i class="fas fa-file-excel"></i> Exportar Excel
+          </button>
           <button class="btn btn-primary" onclick="openProjectModal()">
             <i class="fas fa-plus"></i> Nuevo Proyecto
           </button>

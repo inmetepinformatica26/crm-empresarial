@@ -472,6 +472,47 @@ async function handleProjectSave(e) {
   }
 }
 
+// ===== Exportar Proyectos a Excel =====
+function exportProjectsToExcel() {
+  if (typeof XLSX === 'undefined') {
+    showToast('Error: la libreria de Excel no cargo correctamente', 'error');
+    return;
+  }
+  if (!projectsCache || projectsCache.length === 0) {
+    showToast('No hay proyectos para exportar', 'info');
+    return;
+  }
+
+  const sLabels = { planning: 'Planificacion', in_progress: 'En Progreso', on_hold: 'En Pausa', completed: 'Completado', cancelled: 'Cancelado' };
+  const pLabels = { low: 'Baja', medium: 'Media', high: 'Alta', urgent: 'Urgente' };
+
+  const rows = projectsCache.map(p => ({
+    'Nombre': p.name,
+    'Cliente': p.client_name || 'Sin cliente',
+    'Estado': sLabels[p.status] || p.status,
+    'Prioridad': pLabels[p.priority] || p.priority,
+    'Fecha Inicio': p.start_date || '',
+    'Fecha Fin': p.end_date || '',
+    'Presupuesto ($)': p.budget ? Number(p.budget) : 0,
+    'Asignado a': p.assigned_name || ''
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 30 }, { wch: 25 }, { wch: 15 }, { wch: 12 },
+    { wch: 14 }, { wch: 14 }, { wch: 15 }, { wch: 20 }
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Proyectos');
+
+  const now = new Date();
+  const dateStr = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+  XLSX.writeFile(wb, 'proyectos_' + dateStr + '.xlsx');
+
+  showToast('Proyectos exportados a Excel', 'success');
+}
+
 // ===== View Project Detail (FIXED - proper HTML structure) =====
 async function viewProject(id) {
   try {
