@@ -12,6 +12,10 @@ const settingsRoutes = require('./routes/settings');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Render usa un reverse proxy. Habilitar 'trust proxy' es necesario para que
+// express-rate-limit identifique correctamente la IP real del cliente.
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '15mb' }));
