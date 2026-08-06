@@ -16,8 +16,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('loginForm').addEventListener('submit', handleLogin);
   document.getElementById('clientForm').addEventListener('submit', handleClientSave);
   document.getElementById('projectForm').addEventListener('submit', handleProjectSave);
-  document.getElementById('userForm').addEventListener('submit', handleUserSave);
+document.getElementById('userForm').addEventListener('submit', handleUserSave);
   document.getElementById('editUserForm').addEventListener('submit', handleEditUserSave);
+  document.getElementById('taskForm').addEventListener('submit', handleTaskSave);
   updateCurrentDate();
   setInterval(updateCurrentDate, 60000);
 });
@@ -612,12 +613,46 @@ html += '<div>$ ' + (project.budget ? project.budget.toFixed(2) : '0.00') + '</d
 }
 
 // ===== Task Management =====
+let currentTaskProjectId = null;
+
+// Abre el modal de nueva tarea para el proyecto indicado
 async function addTask(projectId) {
-  var title = prompt('Nombre de la tarea:');
-  if (!title) return;
+  currentTaskProjectId = projectId;
+  document.getElementById('taskTitle').value = '';
+  document.getElementById('taskDescription').value = '';
+  document.getElementById('taskDueDate').value = '';
+  document.getElementById('taskPriority').value = 'medium';
+  // Cargar usuarios asignables
   try {
-    await API.createTask(projectId, { title: title });
+    const users = await API.getAssignableUsers();
+    const select = document.getElementById('taskAssigned');
+    select.innerHTML = '<option value="">Seleccionar usuario</option>' + users.map(u => '<option value="' + u.id + '">' + escapeHtml(u.full_name) + '</option>').join('');
+  } catch (e) {
+    document.getElementById('taskAssigned').innerHTML = '<option value="">Seleccionar usuario</option>';
+  }
+  openModal('taskModal');
+}
+
+// Guarda la tarea desde el modal
+async function handleTaskSave(e) {
+  e.preventDefault();
+  const title = document.getElementById('taskTitle').value.trim();
+  if (!title) {
+    showToast('El titulo de la tarea es obligatorio', 'error');
+    return;
+  }
+  const projectId = currentTaskProjectId;
+  const data = {
+    title: title,
+    description: document.getElementById('taskDescription').value.trim() || null,
+    assigned_to: document.getElementById('taskAssigned').value || null,
+    priority: document.getElementById('taskPriority').value,
+    due_date: document.getElementById('taskDueDate').value || null
+  };
+  try {
+    await API.createTask(projectId, data);
     showToast('Tarea creada exitosamente', 'success');
+    closeModal('taskModal');
     viewProject(projectId);
   } catch (error) {
     showToast(error.message, 'error');
