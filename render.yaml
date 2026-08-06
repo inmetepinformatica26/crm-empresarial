@@ -6,7 +6,7 @@ databases:
 
 services:
   - type: web
-    name: crm-empresarial
+    name: crm-inmetep
     runtime: node
     plan: free
     buildCommand: npm install
